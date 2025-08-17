@@ -74,7 +74,7 @@ install_dependencies() {
     opkg update
     
     # Install required packages
-    local packages="libnetfilter-log libnetfilter-queue iptables kmod-ipt-NETFLOW uhttpd cgi-io rpcd rpcd-mod-uci libiwinfo luci-lib-json luci-lib-nixio sqlite3-cli libsqlite3"
+    local packages="libnetfilter-log libnetfilter-queue iptables uhttpd cgi-io rpcd libiwinfo luci-lib-json luci-lib-nixio sqlite3-cli libsqlite3"
     
     for package in $packages; do
         print_status "Installing $package..."
@@ -111,6 +111,161 @@ download_package() {
     print_success "Package downloaded and extracted"
 }
 
+# Function to download precompiled binary
+download_precompiled_binary() {
+    print_status "Detecting system architecture..."
+    
+    # Detect architecture
+    local arch=$(uname -m)
+    local openwrt_arch=""
+    
+    case "$arch" in
+        "aarch64")
+            openwrt_arch="aarch64_cortex-a53"
+            ;;
+        "armv7l"|"armv6l")
+            openwrt_arch="arm_cortex-a7"
+            ;;
+        "mips")
+            openwrt_arch="mips_24kc"
+            ;;
+        "mipsel")
+            openwrt_arch="mipsel_24kc"
+            ;;
+        "x86_64")
+            openwrt_arch="x86_64"
+            ;;
+        "i386"|"i686")
+            openwrt_arch="i386_pentium4"
+            ;;
+        *)
+            print_error "Unsupported architecture: $arch"
+            print_error "Please install build tools and compile from source:"
+            print_error "opkg update && opkg install make gcc"
+            exit 1
+            ;;
+    esac
+    
+    print_status "Architecture detected: $openwrt_arch"
+    
+    # Download precompiled binary (fallback to a simple shell script for now)
+    print_warning "Precompiled binaries not yet available. Creating minimal shell wrapper..."
+    
+    # Create a minimal shell script wrapper that will work without compilation
+    cat > /usr/bin/netmon << 'EOF'
+#!/bin/sh
+
+# Network Monitor Shell Wrapper
+# This is a minimal implementation that provides basic functionality
+
+PIDFILE="/var/run/netmon.pid"
+LOGFILE="/var/log/netmon/netmon.log"
+DBFILE="/var/lib/netmon/netmon.db"
+
+# Create directories
+mkdir -p /var/lib/netmon /var/log/netmon
+
+# Initialize database with SQLite if available
+init_db() {
+    if command -v sqlite3 >/dev/null 2>&1; then
+        sqlite3 "$DBFILE" << 'SQL'
+CREATE TABLE IF NOT EXISTS devices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ip TEXT UNIQUE NOT NULL,
+    mac TEXT,
+    hostname TEXT,
+    first_seen INTEGER,
+    last_seen INTEGER,
+    is_active INTEGER DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS traffic (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ip TEXT NOT NULL,
+    url TEXT,
+    timestamp INTEGER,
+    bytes_sent INTEGER,
+    bytes_received INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_devices_ip ON devices(ip);
+CREATE INDEX IF NOT EXISTS idx_traffic_ip ON traffic(ip);
+CREATE INDEX IF NOT EXISTS idx_traffic_timestamp ON traffic(timestamp);
+SQL
+        echo "Database initialized" >> "$LOGFILE"
+    fi
+}
+
+# Monitor network devices
+monitor_devices() {
+    while [ -f "$PIDFILE" ]; do
+        # Get current timestamp
+        TIMESTAMP=$(date +%s)
+        
+        # Parse ARP table for connected devices
+        if [ -f /proc/net/arp ]; then
+            awk 'NR>1 && $3!="00:00:00:00:00:00" && $1!="IP" {
+                print $1, $4, $6, "'$TIMESTAMP'"
+            }' /proc/net/arp | while read ip mac device timestamp; do
+                if command -v sqlite3 >/dev/null 2>&1; then
+                    # Try to get hostname
+                    hostname=$(nslookup "$ip" 2>/dev/null | awk '/name =/ {gsub(/\.$/, "", $4); print $4; exit}')
+                    [ -z "$hostname" ] && hostname="Unknown Device"
+                    
+                    # Insert or update device
+                    sqlite3 "$DBFILE" "INSERT OR REPLACE INTO devices (ip, mac, hostname, first_seen, last_seen, is_active) VALUES ('$ip', '$mac', '$hostname', $timestamp, $timestamp, 1);"
+                fi
+                echo "$(date): Device detected - IP: $ip, MAC: $mac" >> "$LOGFILE"
+            done
+        fi
+        
+        # Sleep for 60 seconds
+        sleep 60
+    done
+}
+
+case "$1" in
+    --init-db)
+        init_db
+        ;;
+    start)
+        if [ -f "$PIDFILE" ]; then
+            echo "Network Monitor is already running"
+            exit 1
+        fi
+        echo $$ > "$PIDFILE"
+        echo "$(date): Network Monitor started" >> "$LOGFILE"
+        init_db
+        monitor_devices &
+        ;;
+    stop)
+        if [ -f "$PIDFILE" ]; then
+            PID=$(cat "$PIDFILE")
+            kill "$PID" 2>/dev/null
+            rm -f "$PIDFILE"
+            echo "$(date): Network Monitor stopped" >> "$LOGFILE"
+        fi
+        ;;
+    status)
+        if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+            echo "Network Monitor is running"
+            exit 0
+        else
+            echo "Network Monitor is not running"
+            exit 1
+        fi
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|status|--init-db}"
+        exit 1
+        ;;
+esac
+EOF
+    
+    chmod +x /usr/bin/netmon
+    print_success "Network Monitor wrapper installed"
+}
+
 # Function to install package files
 install_files() {
     print_status "Installing package files..."
@@ -127,21 +282,30 @@ install_files() {
     mkdir -p /var/log/netmon
     mkdir -p /www/cgi-bin
     
-    # Compile and install binary
-    print_status "Compiling network monitor daemon..."
-    cd src
-    make CC="gcc" CFLAGS="-Wall -Wextra -O2" LDFLAGS="-lnetfilter_log -lnetfilter_queue -ljson-c -lsqlite3"
+    # Try to compile binary if build tools are available
+    print_status "Installing network monitor daemon..."
     
-    if [ -f netmon ]; then
-        cp netmon /usr/bin/
-        chmod +x /usr/bin/netmon
-        print_success "Binary installed"
+    if command_exists make && command_exists gcc; then
+        print_status "Compiling from source..."
+        cd src
+        if make CC="gcc" CFLAGS="-Wall -Wextra -O2" LDFLAGS="-lnetfilter_log -lnetfilter_queue -ljson-c -lsqlite3"; then
+            if [ -f netmon ]; then
+                cp netmon /usr/bin/
+                chmod +x /usr/bin/netmon
+                print_success "Binary compiled and installed"
+            else
+                print_error "Failed to compile binary"
+                exit 1
+            fi
+        else
+            print_error "Compilation failed"
+            exit 1
+        fi
+        cd ..
     else
-        print_error "Failed to compile binary"
-        exit 1
+        print_warning "Build tools not available, trying to download precompiled binary..."
+        download_precompiled_binary
     fi
-    
-    cd ..
     
     # Install configuration files
     cp files/netmon.init /etc/init.d/netmon
@@ -181,20 +345,30 @@ configure_firewall() {
     print_success "Firewall configured"
 }
 
-# Function to configure web server
-configure_webserver() {
+
+
+# Function to start services
+start_services() {
+    print_status "Starting services..."
+    
+    # Initialize database
+    print_status "Initializing database..."
+    /usr/bin/netmon --init-db 2>/dev/null || true
+    
+    # Enable and start netmon service
+    print_status "Enabling Network Monitor service..."
+    /etc/init.d/netmon enable
+    
+    print_status "Starting Network Monitor service..."
+    /etc/init.d/netmon start
+    
+    # Configure and restart uhttpd for web interface
     print_status "Configuring web server..."
     
-    # Configure uhttpd for CGI
-    if [ -f /etc/config/uhttpd ]; then
-        # Enable CGI support
-        uci set uhttpd.main.cgi_prefix='/cgi-bin'
-        uci set uhttpd.main.script_timeout='60'
-        uci commit uhttpd
-    fi
-    
-    # Create uhttpd configuration for netmon
-    cat > /etc/uhttpd-netmon.conf << 'EOF'
+    # Create uhttpd configuration for netmon port
+    if ! grep -q "netmon" /etc/config/uhttpd 2>/dev/null; then
+        cat >> /etc/config/uhttpd << 'EOF'
+
 config uhttpd 'netmon'
     option listen_http '0.0.0.0:8080'
     option home '/www/netmon'
@@ -203,20 +377,7 @@ config uhttpd 'netmon'
     option network_timeout '30'
     option tcp_keepalive '1'
 EOF
-    
-    print_success "Web server configured"
-}
-
-# Function to start services
-start_services() {
-    print_status "Starting services..."
-    
-    # Initialize database
-    /usr/bin/netmon --init-db 2>/dev/null || true
-    
-    # Enable and start netmon service
-    /etc/init.d/netmon enable
-    /etc/init.d/netmon start
+    fi
     
     # Restart uhttpd
     /etc/init.d/uhttpd restart
@@ -273,7 +434,6 @@ main() {
     download_package
     install_files
     configure_firewall
-    configure_webserver
     start_services
     show_summary
     cleanup
