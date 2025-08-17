@@ -1,0 +1,68 @@
+# Build files
+*.o
+*.so
+*.a
+src/netmon
+*.tar.gz
+*.ipk
+
+# Temporary files
+*~
+*.tmp
+*.swp
+*.swo
+.DS_Store
+
+# IDE files
+.vscode/
+.idea/
+*.sublime-*
+
+# Logs
+*.log
+/var/log/netmon/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Runtime files
+/var/lib/netmon/
+/tmp/netmon-*
+
+# Package build artifacts
+/dl/
+/staging_dir/
+/build_dir/
+/bin/
+/tmp/
+/.config
+/.config.old
+
+# Distribution packages
+*.deb
+*.rpm
+
+# Documentation build
+docs/_build/
+docs/.doctrees/
+
+# Python cache (if any Python tools are used)
+__pycache__/
+*.pyc
+*.pyo
+
+# Node modules (if any JavaScript tools are used)
+node_modules/
+npm-debug.log
+
+# Backup files
+*.bak
+*.backup
+*-backup
+*-old
+
+# Local development
+local.config
+dev.config

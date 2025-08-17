@@ -1,0 +1,63 @@
+<%+header%>
+
+<div class="cbi-map">
+    <h2 name="content"><%:Network Monitor Status%></h2>
+    <div class="cbi-section">
+        <div class="cbi-section-node">
+            <div class="table">
+                <div class="tr">
+                    <div class="td left" width="33%"><%:Service Status%></div>
+                    <div class="td left" id="service_status">
+                        <em><%:Collecting data...%></em>
+                    </div>
+                </div>
+                <div class="tr">
+                    <div class="td left" width="33%"><%:Monitored Interface%></div>
+                    <div class="td left" id="monitored_interface">
+                        <em><%:Loading...%></em>
+                    </div>
+                </div>
+                <div class="tr">
+                    <div class="td left" width="33%"><%:Connected Devices%></div>
+                    <div class="td left" id="device_count">
+                        <em><%:Loading...%></em>
+                    </div>
+                </div>
+                <div class="tr">
+                    <div class="td left" width="33%"><%:Data Retention%></div>
+                    <div class="td left" id="data_retention">
+                        <em><%:Loading...%></em>
+                    </div>
+                </div>
+                <div class="tr">
+                    <div class="td left" width="33%"><%:Web Interface%></div>
+                    <div class="td left">
+                        <a href="http://<%=luci.http.getenv("HTTP_HOST"):gsub(":%d+$","")%>:8080/netmon" target="_blank">
+                            <%:Open Network Monitor%>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript">
+    function updateStatus() {
+        XHR.get('<%=url("admin/network/netmon/status")%>', null, function(x, data) {
+            if (data) {
+                document.getElementById('service_status').innerHTML = data.enabled ? 
+                    '<span style="color: green;"><%:Running%></span>' : 
+                    '<span style="color: red;"><%:Stopped%></span>';
+                document.getElementById('monitored_interface').innerHTML = data.interface || 'lan';
+                document.getElementById('data_retention').innerHTML = (data.data_retention || '30') + ' <%:days%>';
+            }
+        });
+    }
+    
+    // Update status every 5 seconds
+    updateStatus();
+    setInterval(updateStatus, 5000);
+</script>
+
+<%+footer%>

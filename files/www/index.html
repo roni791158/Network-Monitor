@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Monitor</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <h1><i class="fas fa-network-wired"></i> Network Monitor</h1>
+                <div class="header-actions">
+                    <button class="btn btn-primary" onclick="refreshData()">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                    <button class="btn btn-secondary" onclick="showReportModal()">
+                        <i class="fas fa-file-pdf"></i> Generate Report
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <!-- Dashboard Stats -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-devices"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Connected Devices</h3>
+                        <p class="stat-number" id="deviceCount">0</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-download"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Total Download</h3>
+                        <p class="stat-number" id="totalDownload">0 MB</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-upload"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Total Upload</h3>
+                        <p class="stat-number" id="totalUpload">0 MB</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-globe"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Websites Visited</h3>
+                        <p class="stat-number" id="websiteCount">0</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation Tabs -->
+            <div class="tabs">
+                <button class="tab-btn active" onclick="showTab('devices')">
+                    <i class="fas fa-laptop"></i> Connected Devices
+                </button>
+                <button class="tab-btn" onclick="showTab('traffic')">
+                    <i class="fas fa-chart-line"></i> Traffic Analysis
+                </button>
+                <button class="tab-btn" onclick="showTab('websites')">
+                    <i class="fas fa-history"></i> Website History
+                </button>
+            </div>
+
+            <!-- Tab Content -->
+            <div class="tab-content">
+                <!-- Devices Tab -->
+                <div id="devices-tab" class="tab-pane active">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-laptop"></i> Connected Devices</h3>
+                        </div>
+                        <div class="card-content">
+                            <div class="table-container">
+                                <table class="data-table" id="devicesTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Device Name</th>
+                                            <th>IP Address</th>
+                                            <th>MAC Address</th>
+                                            <th>Last Seen</th>
+                                            <th>Status</th>
+                                            <th>Data Usage</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="devicesTableBody">
+                                        <!-- Devices will be loaded here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Traffic Tab -->
+                <div id="traffic-tab" class="tab-pane">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-chart-line"></i> Traffic Analysis</h3>
+                            <div class="date-filter">
+                                <input type="date" id="startDate" class="date-input">
+                                <span>to</span>
+                                <input type="date" id="endDate" class="date-input">
+                                <button class="btn btn-sm btn-primary" onclick="filterTraffic()">Filter</button>
+                            </div>
+                        </div>
+                        <div class="card-content">
+                            <div class="chart-container">
+                                <canvas id="trafficChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Websites Tab -->
+                <div id="websites-tab" class="tab-pane">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-history"></i> Website History</h3>
+                        </div>
+                        <div class="card-content">
+                            <div class="table-container">
+                                <table class="data-table" id="websitesTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Website</th>
+                                            <th>Device IP</th>
+                                            <th>Visit Time</th>
+                                            <th>Data Transferred</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="websitesTableBody">
+                                        <!-- Website history will be loaded here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Report Modal -->
+    <div id="reportModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-file-pdf"></i> Generate Report</h3>
+                <span class="close" onclick="closeReportModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="reportForm">
+                    <div class="form-group">
+                        <label for="reportStartDate">Start Date:</label>
+                        <input type="date" id="reportStartDate" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="reportEndDate">End Date:</label>
+                        <input type="date" id="reportEndDate" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="reportType">Report Type:</label>
+                        <select id="reportType">
+                            <option value="summary">Summary Report</option>
+                            <option value="detailed">Detailed Report</option>
+                            <option value="device">Device-wise Report</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeReportModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="generateReport()">
+                    <i class="fas fa-download"></i> Generate PDF
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
